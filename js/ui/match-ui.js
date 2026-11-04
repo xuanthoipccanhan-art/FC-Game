@@ -15,36 +15,40 @@
 
   App.on("advance", function () {
     const s = G.s;
+    if (s.careerOver) return this.showCareerOver();
     if (s.sacked) return this.showSacked();
     if (s.seasonEnded) return this.showSeasonEnd();
+    if (s.pendingEvents.length) return this.checkEvents();
     const btn = document.getElementById("btn-advance");
-    if (btn) btn.disabled = true;
-    const r = G.advance();
-    if (r.type === "match") {
+    if (btn) { btn.disabled = true; btn.textContent = "Đang mô phỏng..."; }
+    setTimeout(() => {
+      const r = G.advance();
+      if (r.type === "match") { this.render(); return this.preMatch(r.fixture); }
+      G.save(this.slot);
       this.render();
-      return this.preMatch(r.fixture);
-    }
-    G.save(this.slot);
-    this.render();
-    if (r.type === "sacked") return this.showSacked();
-    if (r.type === "seasonEnd") return this.showSeasonEnd();
-    if (r.ev) {
-      const uf = G.userFixtureIn(r.ev);
-      if (!uf) this.toast(`${CP.COMP[r.ev.comp].name} – ${esc(r.ev.label)} đã diễn ra. <a href="#" data-act="evResults" data-id="${r.ev.id}">Xem kết quả</a>`);
-    }
-    const unread = s.inbox.filter((m) => !m.read && (m.type === "offer" || m.type === "board" || m.type === "medical")).slice(0, 2);
-    unread.forEach((m) => this.toast(`✉️ ${esc(m.subject)}`));
+      if (r.type === "event") return this.checkEvents();
+      if (r.type === "sacked") return this.showSacked();
+      if (r.type === "careerOver") return this.showCareerOver();
+      if (r.type === "seasonEnd") return this.showSeasonEnd();
+    }, 20);
   });
 
-  App.on("evResults", function (d) {
-    const ev = G.s.calendar.find((c) => c.id === d.id);
-    if (!ev) return;
-    const body = `<table class="tbl"><tbody>${ev.fixtures.map((id) => {
-      const f = G.s.fixtures[id];
-      return `<tr class="click" data-act="fixture" data-id="${f.id}"><td class="right">${h.club(f.home, 20)}</td><td class="center b" style="width:110px">${f.result ? `${f.result.hg} - ${f.result.ag}${f.result.pens ? ` <span class="tiny muted">(${f.result.pens[0]}-${f.result.pens[1]})</span>` : ""}` : "vs"}</td><td>${h.club(f.away, 20)}</td></tr>`;
-    }).join("")}</tbody></table>`;
-    this.modal(`${CP.COMP[ev.comp].name} – ${esc(ev.label)}`, body, {});
-  });
+  // Sự kiện cần quyết định (drama, họp báo, tài trợ, cựu cầu thủ xin việc...)
+  App.checkEvents = function () {
+    const s = G.s;
+    if (!s || !s.pendingEvents.length) return;
+    const ev = s.pendingEvents[0];
+    const body = `<div class="mail-body">${ev.body}</div>
+      <div class="col" style="margin-top:14px">${ev.options.map((o, i) => `<button class="btn" data-opt="${i}" style="text-align:left;white-space:normal">${esc(o)}</button>`).join("")}</div>`;
+    const m = this.modal(esc(ev.title), body, { size: "narrow", noClose: true, icon: "⚡" });
+    m.querySelectorAll("[data-opt]").forEach((b) => (b.onclick = () => {
+      const msg = FC.events.resolve(G, ev.id, +b.dataset.opt);
+      this.closeModal(m);
+      if (msg) this.toast(esc(msg));
+      this.render();
+      if (s.pendingEvents.length) setTimeout(() => this.checkEvents(), 150);
+    }));
+  };
 
   // ===== Trước trận =====
   App.preMatch = function (f) {
@@ -56,10 +60,10 @@
     u.tactics.bench = v.bench;
     const slots = PL.FORMATIONS[u.tactics.formation];
     const oppXI = PL.autoLineup(G.squad(opp.id), opp.tactics.formation, { rotate: true });
+    const om = s.managers[opp.mgr];
     const oslots = PL.FORMATIONS[opp.tactics.formation];
-    const t = CP.leagueTable(s);
-    const formOf = (id) => (t.find((r) => r.id === id) || { form: [] }).form;
-    const posOf = (id) => t.findIndex((r) => r.id === id) + 1;
+    const formOf = (id) => (CP.leagueTable(s, s.clubs[id].league).find((r) => r.id === id) || { form: [] }).form;
+    const posOf = (id) => CP.position(s, id);
     const strength = (ids, sl) => Math.round(ids.reduce((a, id, i) => a + (id ? PL.effective(s.players[id], sl[i][0]) : 0), 0) / 11);
     const xiList = (ids, sl, mine) => ids.map((id, i) => {
       const p = id ? s.players[id] : null;
@@ -69,12 +73,12 @@
     }).join("");
     const issues = G.lineupIssues(u);
     const home = s.clubs[f.home], away = s.clubs[f.away];
-    const body = `<div class="vs"><div class="t">${FC.crest(home, 60)}${esc(home.name)}${home.league === "ENG" ? `<span class="tiny muted">Hạng ${posOf(home.id)}</span>${h.form(formOf(home.id))}` : ""}</div>
-      <div class="mid">VS</div><div class="t">${FC.crest(away, 60)}${esc(away.name)}${away.league === "ENG" ? `<span class="tiny muted">Hạng ${posOf(away.id)}</span>${h.form(formOf(away.id))}` : ""}</div></div>
-      <div class="center small muted" style="margin:8px 0 14px">${h.compTag(f.comp)} ${CP.roundLabel(f)} · ${U.fmtDate(f.date)} · ${f.neutral ? "Sân trung lập" : esc(home.stadium)}</div>
+    const body = `<div class="vs"><div class="t">${FC.crest(home, 60)}${esc(home.name)}<span class="tiny muted">${esc(FC.LEAGUES[home.league].short)} · Hạng ${posOf(home.id)}</span>${h.form(formOf(home.id))}</div>
+      <div class="mid">VS</div><div class="t">${FC.crest(away, 60)}${esc(away.name)}<span class="tiny muted">${esc(FC.LEAGUES[away.league].short)} · Hạng ${posOf(away.id)}</span>${h.form(formOf(away.id))}</div></div>
+      <div class="center small muted" style="margin:8px 0 14px">${h.compTag(f)} ${CP.roundLabel(s, f)} · ${U.fmtDate(f.date)} · ${f.neutral ? "Sân trung lập" : esc(home.stadium)}</div>
       <div class="grid g2">
         <div class="card" style="box-shadow:none"><h3>${FC.crest(u, 20)} Đội hình của bạn <span class="sp tag blue">${u.tactics.formation} · ${strength(v.lineup, slots)}</span></h3>${xiList(v.lineup, slots, true)}</div>
-        <div class="card" style="box-shadow:none"><h3>${FC.crest(opp, 20)} Dự đoán đội hình <span class="sp tag orange">${opp.tactics.formation} · ${strength(oppXI.lineup, oslots)}</span></h3>${xiList(oppXI.lineup, oslots, false)}</div>
+        <div class="card" style="box-shadow:none"><h3>${FC.crest(opp, 20)} Dự đoán đội hình <span class="sp tag orange">${opp.tactics.formation} · ${strength(oppXI.lineup, oslots)}</span></h3>${om ? `<div class="tiny muted" style="margin-bottom:6px">HLV ${esc(om.name)} · ${esc(FC.PHILOSOPHIES[om.phil].name)}</div>` : ""}${xiList(oppXI.lineup, oslots, false)}</div>
       </div>
       ${issues.length ? `<div class="small" style="color:var(--orange);margin-top:10px">⚠ ${issues.map(esc).join(" · ")}</div>` : ""}
       <div class="row wrap" style="margin-top:14px"><span class="b small">🗣️ Nói chuyện trước trận:</span>
@@ -121,7 +125,7 @@
         <div><div class="sc" id="m-sc">0 - 0</div><div class="clock" id="m-clock">0'</div></div>
         <div class="tm away"><span class="n">${esc(away.name)}</span>${FC.crest(away, 40)}</div></div>
         <div class="scorers"><div id="m-g0"></div><div id="m-g1"></div></div>
-        <div class="center tiny muted" style="margin-top:4px">${h.compTag(f.comp)} ${CP.roundLabel(f)} · ${f.neutral ? "Sân trung lập" : esc(home.stadium)}</div></div>
+        <div class="center tiny muted" style="margin-top:4px">${h.compTag(f)} ${CP.roundLabel(s, f)} · ${f.neutral ? "Sân trung lập" : esc(home.stadium)}</div></div>
       <div class="match-body">
         <div class="col">
           <div class="card"><div class="row wrap between">
@@ -335,8 +339,10 @@
       </div>`;
     const m = this.modal("Sau trận đấu", body, { size: "wide", footer: `<button class="btn" id="pmx-det">Chi tiết thống kê</button><button class="btn primary" data-close>Tiếp tục</button>`, onClose: () => {
       this.render();
-      if (res.type === "seasonEnd") this.showSeasonEnd();
+      if (s.careerOver) this.showCareerOver();
+      else if (res.type === "seasonEnd") this.showSeasonEnd();
       else if (s.sacked) this.showSacked();
+      else this.checkEvents();
     } });
     m.querySelector("#pmx-det").onclick = () => this.showFixture(f.id);
   };
@@ -346,27 +352,37 @@
     const s = G.s;
     const x = s.lastSummary;
     if (!x) return;
+    if (s.careerOver) return this.showCareerOver();
     if (s.sacked) return this.showSacked();
     const c = (id) => (id ? h.clubStatic(s.clubs[id], 22) : "—");
-    const body = `<div class="center"><div class="tiny muted">MÙA GIẢI ${x.season}</div><div style="font-size:42px;font-weight:900">Hạng ${x.pos}</div>
-        <div>${x.met ? '<span class="tag green">Đạt mục tiêu</span>' : '<span class="tag red">Không đạt mục tiêu</span>'} <span class="small muted">(${esc(x.targetText)})</span></div></div>
+    const L = FC.LEAGUES[x.league];
+    const moves = (x.moves || []).filter((m) => FC.LEAGUES[m.from].country === FC.LEAGUES[x.league].country);
+    const body = `<div class="center"><div class="tiny muted">MÙA GIẢI ${x.season} · ${esc(L.name)} · MÙA ${G.seasonNo()}/${G.MAX_SEASONS}</div><div style="font-size:42px;font-weight:900">Hạng ${x.pos}</div>
+        <div>${x.met ? '<span class="tag green">Đạt mục tiêu</span>' : '<span class="tag red">Không đạt mục tiêu</span>'} <span class="small muted">(${esc(x.targetText)})</span>
+        ${x.move === "up" ? ' <span class="tag gold">⬆️ LÊN HẠNG!</span>' : x.move === "down" ? ' <span class="tag red">⬇️ XUỐNG HẠNG</span>' : ""}</div></div>
       <div class="grid g3" style="margin-top:16px">
-        <div class="card" style="box-shadow:none"><h3>🏆 Nhà vô địch</h3><div class="col small"><div>Ngoại hạng Anh: ${c(x.champion)}</div><div>Cúp Quốc gia: ${c(x.cupWinner)}</div><div>Cúp C1: ${c(x.uclWinner)}</div></div></div>
-        <div class="card" style="box-shadow:none"><h3>🎖️ Giải thưởng cá nhân</h3><div class="col small">
-          <div>Vua phá lưới: ${x.topScorer ? `<b>${esc(x.topScorer.name)}</b> (${x.topScorer.goals} bàn)` : "—"}</div>
-          <div>Cầu thủ hay nhất: ${x.potm ? `<b>${esc(x.potm.name)}</b> (${x.potm.r})` : "—"}</div>
-          <div>Cầu thủ trẻ hay nhất: ${x.ypotm ? `<b>${esc(x.ypotm.name)}</b> (${x.ypotm.r})` : "—"}</div></div></div>
-        <div class="card" style="box-shadow:none"><h3>📋 Thành tích của bạn</h3><div class="kv small"><span class="k">Cúp Quốc gia</span><span class="v">${esc(x.cupRun)}</span><span class="k">Cúp C1</span><span class="v">${esc(x.uclRun)}</span>
+        <div class="card" style="box-shadow:none"><h3>🏆 Nhà vô địch</h3><div class="col small"><div>${esc(L.name)}: ${c(x.champion)}</div><div>Cúp quốc gia: ${c(x.cupWinner)}</div><div>Cúp C1: ${c(x.uclWinner)}</div><div>Libertadores: ${c(x.libWinner)}</div></div></div>
+        <div class="card" style="box-shadow:none"><h3>🎖️ Giải thưởng</h3><div class="col small">
+          <div>🥇 Quả bóng vàng: ${x.ballon ? `<b>${esc(x.ballon.name)}</b> (${esc(s.clubs[x.ballon.club].short)})` : "—"}</div>
+          <div>🌟 Golden Boy: ${x.golden ? `<b>${esc(x.golden.name)}</b>` : "—"}</div>
+          <div>⚽ Vua phá lưới giải: ${x.topScorer ? `<b>${esc(x.topScorer.name)}</b> (${x.topScorer.goals})` : "—"}</div>
+          <div>⭐ Cầu thủ hay nhất giải: ${x.potm ? `<b>${esc(x.potm.name)}</b> (${x.potm.r})` : "—"}</div></div></div>
+        <div class="card" style="box-shadow:none"><h3>📋 Thành tích của bạn</h3><div class="kv small"><span class="k">Cúp quốc gia</span><span class="v">${esc(x.cupRun)}</span><span class="k">Châu lục</span><span class="v">${esc(x.contRun)}</span>
           <span class="k">Thu / Chi</span><span class="v">${U.money(x.income)} / ${U.money(x.expense)}</span><span class="k">Tín nhiệm</span><span class="v">${Math.round(s.board.confidence)}%</span></div></div>
       </div>
-      <p class="small muted center" style="margin-top:12px">Khi bắt đầu mùa mới: cầu thủ thêm 1 tuổi, một số giải nghệ, hợp đồng hết hạn sẽ rời CLB, top 4 giành vé dự Cúp C1, ban lãnh đạo cấp ngân sách mới.</p>`;
+      ${moves.length ? `<div class="card" style="box-shadow:none;margin-top:12px"><h3>⬆️⬇️ Lên/xuống hạng (${FC.flag(L.country)})</h3><div class="row wrap small">${moves.map((m) => `<span class="tag ${m.dir === "up" ? "green" : "red"}">${m.dir === "up" ? "⬆️" : "⬇️"} ${esc(s.clubs[m.club].name)}</span>`).join("")}</div></div>` : ""}
+      <p class="small muted center" style="margin-top:12px">Mùa mới: cầu thủ thêm 1 tuổi, một số giải nghệ (có thể xin làm việc cho bạn), hết hạn mượn, áp dụng lên/xuống hạng, phân suất cúp châu lục, ban lãnh đạo cấp ngân sách mới.</p>`;
     const m = this.modal("Tổng kết mùa giải", body, { size: "wide", noClose: true, footer: `<button class="btn primary" id="ns-go">Bắt đầu mùa ${G.seasonLabel(s.season + 1)} ▶</button>` });
     m.querySelector("#ns-go").onclick = () => {
-      this.closeModal(m);
-      G.startNewSeason();
-      G.save(this.slot);
-      this.go("home");
-      this.toast(`Chào mừng mùa giải ${G.seasonLabel()}!`);
+      m.querySelector("#ns-go").disabled = true;
+      setTimeout(() => {
+        this.closeModal(m);
+        G.startNewSeason();
+        G.save(this.slot);
+        this.go("home");
+        this.toast(`Chào mừng mùa giải ${G.seasonLabel()}!`);
+        this.checkEvents();
+      }, 20);
     };
   };
 
@@ -375,7 +391,7 @@
     const offers = G.jobOffers();
     const body = `<p>Ban lãnh đạo <b>${esc(G.user.name)}</b> đã quyết định sa thải bạn vì thành tích không đạt kỳ vọng.</p>
       <p class="small muted">Một số CLB đang quan tâm tới bạn:</p>
-      <div class="col">${offers.map((c) => `<button class="club-pick" data-job="${c.id}">${FC.crest(c, 40)}<div class="grow"><div class="b">${esc(c.name)}</div>${h.stars(c.rep)}</div></button>`).join("")}</div>`;
+      <div class="col">${offers.map((c) => `<button class="club-pick" data-job="${c.id}">${FC.crest(c, 40)}<div class="grow"><div class="b">${esc(c.name)}</div>${h.league(c.league)} ${h.stars(c.rep)}</div></button>`).join("")}</div>`;
     const m = this.modal("Bạn đã bị sa thải", body, { noClose: true, footer: `<button class="btn" id="sk-quit">Về menu chính</button>` });
     m.querySelectorAll("[data-job]").forEach((b) => (b.onclick = () => {
       G.takeJob(b.dataset.job);
@@ -384,7 +400,23 @@
       this.closeModal(m);
       this.go("home");
       this.toast(`Bạn là HLV mới của ${esc(G.user.name)}!`);
+      this.checkEvents();
     }));
     m.querySelector("#sk-quit").onclick = () => { this.closeModal(m); G.s = null; this.st.start = null; this.render(); };
+  };
+
+  App.showCareerOver = function () {
+    const s = G.s, m = s.manager;
+    const lg = G.legacy();
+    const body = `<div class="center"><div class="tiny muted">KẾT THÚC SỰ NGHIỆP SAU ${G.MAX_SEASONS} MÙA GIẢI</div><div style="font-size:30px;font-weight:900;margin:6px 0">${esc(m.name)}</div>
+      <div class="stat-big" style="color:var(--gold)">${esc(lg.rank)}</div><div class="small muted">Điểm di sản: ${lg.pts}</div></div>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="card" style="box-shadow:none"><h3>📊 Thống kê</h3><div class="kv small"><span class="k">Số trận</span><span class="v">${m.games}</span><span class="k">Thắng/Hoà/Thua</span><span class="v">${m.w}/${m.d}/${m.l}</span><span class="k">Tỉ lệ thắng</span><span class="v">${m.games ? Math.round((m.w / m.games) * 100) : 0}%</span><span class="k">Lần lên hạng</span><span class="v">${m.promotions}</span></div></div>
+        <div class="card" style="box-shadow:none"><h3>🏟️ CLB đã dẫn dắt</h3>${m.clubs.map((c) => `<div>${h.clubStatic(s.clubs[c], 18)}</div>`).join("")}</div>
+        <div class="card" style="box-shadow:none"><h3>🏆 Danh hiệu (${m.trophies.length})</h3>${m.trophies.map((t) => `<div class="small">🏆 ${esc(t.name)} <span class="muted">(${t.season})</span></div>`).join("") || '<div class="muted small">Không có</div>'}</div>
+      </div>`;
+    const mm = this.modal("🎬 Hồi kết sự nghiệp", body, { size: "wide", noClose: true, footer: `<button class="btn" id="co-view">Xem lại sự nghiệp</button><button class="btn primary" id="co-new">Bắt đầu sự nghiệp mới</button>` });
+    mm.querySelector("#co-view").onclick = () => { this.closeModal(mm); this.go("club"); };
+    mm.querySelector("#co-new").onclick = () => { this.closeModal(mm); G.s = null; this.st.start = { step: "pick", league: "ENG1", phil: "pragmatic", nat: "VIE", name: m.name }; this.render(); };
   };
 })();

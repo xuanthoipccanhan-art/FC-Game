@@ -124,14 +124,28 @@
       attrs: genAttrs(name, pos, ovr),
       contract: U.randInt(1, 5),
       fitness: 100, morale: 72, form: 6.6, injury: 0, injuryName: "", suspended: 0, yellows: 0, prog: 0,
-      listed: false, youth: false, num: 0, joined: null,
-      stats: newStats(), career: { apps: 0, goals: 0, assists: 0 },
+      listed: false, num: 0, joined: null, res: false, loan: null, gen: false,
+      pers: personality(name),
+      stats: newStats(), career: { apps: 0, goals: 0, assists: 0, clubs: [] },
     };
     if (age <= 21) p.contract = Math.max(p.contract, 3);
     if (age >= 33) p.contract = Math.min(p.contract, 2);
     p.wage = Math.round(baseWage(ovr, age) * U.rand(0.85, 1.2) * (0.75 + (rep || 75) / 300));
     p.value = calcValue(p);
     return p;
+  }
+
+  // Tính cách cầu thủ (ảnh hưởng tới drama, đàm phán, tinh thần)
+  const PERSONALITIES = {
+    pro: "Chuyên nghiệp", amb: "Tham vọng", loyal: "Trung thành", hot: "Nóng nảy", party: "Ham chơi",
+    leader: "Thủ lĩnh", calm: "Điềm tĩnh", moody: "Thất thường",
+  };
+  function personality(name) {
+    const r = U.seeded(U.hashStr(name + "#pers"))();
+    const order = [["pro", 0.22], ["amb", 0.16], ["loyal", 0.12], ["calm", 0.14], ["leader", 0.08], ["hot", 0.1], ["party", 0.08], ["moody", 0.1]];
+    let acc = 0;
+    for (const [k, w] of order) { acc += w; if (r < acc) return k; }
+    return "calm";
   }
 
   function newStats() {
@@ -195,6 +209,7 @@
   }
 
   FC.players = {
+    PERSONALITIES, personality,
     POS, POS_VI, GROUP, POS_ORDER, FORMATIONS, LINE_W, ATTR_NAMES, GK_ATTR_NAMES,
     familiarity, genAttrs, potentialFor, calcValue, baseWage, makePlayer, newStats, avgRating, applyOvrDelta,
     available, effective, autoLineup, shirtNumbers,

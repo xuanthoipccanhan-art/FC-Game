@@ -1,19 +1,39 @@
-/* Lịch thi đấu, giải VĐQG, Cúp Quốc gia, Cúp C1 châu Âu */
+/* Lịch thi đấu đa giải, bảng xếp hạng, cúp quốc gia, cúp châu lục, play-off lên hạng */
 (function () {
   const FC = (window.FC = window.FC || {});
   const U = FC.util;
 
   const COMP = {
-    league: { name: "Ngoại hạng Anh", short: "NHA", color: "#7b2ff7" },
-    cup: { name: "Cúp Quốc gia Anh", short: "CUP", color: "#e0a800" },
+    league: { name: "VĐQG", short: "LG", color: "#7b2ff7" },
+    cup: { name: "Cúp Quốc gia", short: "CUP", color: "#e0a800" },
     ucl: { name: "Cúp C1 châu Âu", short: "C1", color: "#1e88e5" },
+    lib: { name: "Copa Libertadores", short: "LIB", color: "#c9a227" },
+    po: { name: "Play-off lên hạng", short: "PO", color: "#00b894" },
+    bar: { name: "Play-off trụ hạng", short: "BAR", color: "#ff7675" },
   };
-  const CUP_ROUNDS = [
-    { key: "r1", label: "Vòng 1" }, { key: "r16", label: "Vòng 1/8" }, { key: "qf", label: "Tứ kết" }, { key: "sf", label: "Bán kết" }, { key: "f", label: "Chung kết" },
-  ];
-  const UCL_KO = [{ key: "qf", label: "Tứ kết" }, { key: "sf", label: "Bán kết" }, { key: "f", label: "Chung kết" }];
 
-  // Lịch vòng tròn 2 lượt (thuật toán xoay vòng)
+  // Tên hiển thị của một trận/giải
+  function compName(f) {
+    if (f.comp === "league") return FC.LEAGUES[f.key].name;
+    if (f.comp === "cup") return cupName(f.key);
+    if (f.comp === "po") return "Play-off " + FC.LEAGUES[f.key].name;
+    if (f.comp === "bar") return "Play-off trụ hạng " + FC.LEAGUES[f.key].name;
+    return COMP[f.comp].name;
+  }
+  function compShort(f) {
+    if (f.comp === "league") return FC.LEAGUES[f.key].short;
+    return COMP[f.comp].short;
+  }
+  function compColor(f) {
+    if (f.comp === "league") return FC.LEAGUES[f.key].color;
+    return COMP[f.comp].color;
+  }
+  function cupName(country) {
+    const l = Object.values(FC.LEAGUES).find((x) => x.country === country && x.tier === 1);
+    return (l && l.cup) || "Cúp Quốc gia";
+  }
+
+  // Lịch vòng tròn 2 lượt
   function roundRobin(teams) {
     const t = U.shuffle(teams);
     if (t.length % 2) t.push(null);
@@ -23,104 +43,150 @@
       const pairs = [];
       for (let i = 0; i < n / 2; i++) {
         const a = t[i], b = t[n - 1 - i];
-        if (a && b) pairs.push(r % 2 === 0 ? (i === 0 ? [a, b] : [a, b]) : [b, a]);
+        if (a && b) pairs.push([a, b]);
       }
       rounds.push(pairs);
       t.splice(1, 0, t.pop());
     }
-    // Đảo chiều sân để cân bằng
     const first = rounds.map((rd, ri) => rd.map(([a, b], pi) => ((ri + pi) % 2 ? [b, a] : [a, b])));
     const second = first.map((rd) => rd.map(([a, b]) => [b, a]));
     return first.concat(second);
   }
 
   function firstSaturdayNear(y) {
-    // Thứ Bảy gần ngày 20/08 nhất
     let d = `${y}-08-20`;
     while (U.toDate(d).getUTCDay() !== 6) d = U.addDays(d, 1);
     return d;
   }
 
-  function buildSeason(game, year) {
-    const leagueTeams = Object.values(game.clubs).filter((c) => c.league === "ENG").map((c) => c.id);
-    const fixtures = {};
-    const calendar = [];
-    const mk = (comp, round, home, away, date, extra = {}) => {
-      const id = U.uid("f");
-      fixtures[id] = { id, comp, round, home, away, date, result: null, ...extra };
-      return id;
-    };
-    const start = firstSaturdayNear(year);
-    const BREAKS = new Set([2, 7, 12, 30]);
-    const CUP_FINAL_WEEK = 37;
-    const LEAGUE_MIDWEEK = [15, 19, 23];
-    const UCL_GROUP = [4, 6, 9, 11, 14, 16];
-    const UCL_KO_W = { qf: 28, sf: 33 };
-    const CUP_W = { r1: 5, r16: 10, qf: 21, sf: 25 };
+  const BREAKS = [2, 7, 12, 30]; // tuần FIFA Days (đội tuyển)
+  const MIDWEEK = [15, 19, 23, 5, 9, 26, 28, 33, 35, 17];
+  const CUP_WEEKS = [3, 8, 13, 20, 24, 29, 34];
+  const CONT_WEEKS = { g1: 4, g2: 6, g3: 10, g4: 11, g5: 14, g6: 16, r16: 22, qf: 27, sf: 32, f: 41 };
 
-    const leagueSlots = [];
-    for (let w = 0; w < 40; w++) {
-      const sat = U.addDays(start, w * 7);
-      if (!BREAKS.has(w) && w !== CUP_FINAL_WEEK) leagueSlots.push(sat);
-      if (LEAGUE_MIDWEEK.includes(w)) leagueSlots.push(U.addDays(sat, 4));
-    }
-    leagueSlots.sort();
-    const rr = roundRobin(leagueTeams);
-    rr.forEach((pairs, r) => {
-      const date = leagueSlots[r];
-      const ids = pairs.map(([h, a]) => mk("league", r + 1, h, a, date));
-      calendar.push({ id: U.uid("c"), date, comp: "league", round: r + 1, label: `Vòng ${r + 1}`, fixtures: ids, done: false });
-    });
+  function nextPow2(n) { let p = 1; while (p < n) p *= 2; return p; }
 
-    // Cúp quốc gia: tạo trước các mốc, bốc thăm sau
-    for (const r of CUP_ROUNDS) {
-      const date = r.key === "f" ? U.addDays(start, CUP_FINAL_WEEK * 7) : U.addDays(start, CUP_W[r.key] * 7 + 3);
-      calendar.push({ id: U.uid("c"), date, comp: "cup", round: r.key, label: r.label, fixtures: [], done: false });
-    }
-    // Cúp C1
-    UCL_GROUP.forEach((w, i) => {
-      calendar.push({ id: U.uid("c"), date: U.addDays(start, w * 7 + 3), comp: "ucl", round: "g" + (i + 1), label: `Vòng bảng - Lượt ${i + 1}`, fixtures: [], done: false });
-    });
-    calendar.push({ id: U.uid("c"), date: U.addDays(start, UCL_KO_W.qf * 7 + 3), comp: "ucl", round: "qf", label: "Tứ kết", fixtures: [], done: false });
-    calendar.push({ id: U.uid("c"), date: U.addDays(start, UCL_KO_W.sf * 7 + 3), comp: "ucl", round: "sf", label: "Bán kết", fixtures: [], done: false });
-    calendar.push({ id: U.uid("c"), date: U.addDays(start, 40 * 7), comp: "ucl", round: "f", label: "Chung kết", fixtures: [], done: false });
-
-    calendar.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    game.fixtures = fixtures;
-    game.calendar = calendar;
-    game.calIdx = 0;
-
-    // Cúp quốc gia: vòng 1 cho 8 đội có uy tín thấp nhất
-    const byRep = leagueTeams.slice().sort((a, b) => game.clubs[b].rep - game.clubs[a].rep);
-    const low = U.shuffle(byRep.slice(12));
-    game.cup = { alive: byRep.slice(0, 12), byes: byRep.slice(0, 12), winner: null, eliminated: {} };
-    const r1 = calendar.find((c) => c.comp === "cup" && c.round === "r1");
-    for (let i = 0; i < 8; i += 2) r1.fixtures.push(mk("cup", "r1", low[i], low[i + 1], r1.date, { ko: true }));
-
-    // Cúp C1: 4 đội Anh + 12 đội châu Âu, chia 4 bảng
-    let eng = game.uclQualified && game.uclQualified.length === 4 ? game.uclQualified : byRep.slice(0, 4);
-    const eur = Object.values(game.clubs).filter((c) => c.league === "EUR").map((c) => c.id);
-    const all = eng.concat(eur).sort((a, b) => game.clubs[b].rep - game.clubs[a].rep);
-    const pots = [0, 1, 2, 3].map((k) => U.shuffle(all.slice(k * 4, k * 4 + 4)));
-    const groups = { A: [], B: [], C: [], D: [] };
-    const gk = Object.keys(groups);
-    for (const pot of pots) pot.forEach((t, i) => groups[gk[i]].push(t));
-    game.ucl = { groups, teams: all, winner: null, eliminated: {} };
-    const pattern = [[[0, 1], [2, 3]], [[3, 0], [1, 2]], [[0, 2], [3, 1]]];
-    const md = [pattern[0], pattern[1], pattern[2], pattern[0].map(([a, b]) => [b, a]), pattern[1].map(([a, b]) => [b, a]), pattern[2].map(([a, b]) => [b, a])];
-    md.forEach((pairs, mi) => {
-      const ev = calendar.find((c) => c.comp === "ucl" && c.round === "g" + (mi + 1));
-      for (const g of gk) {
-        for (const [a, b] of pairs) ev.fixtures.push(mk("ucl", "g" + (mi + 1), groups[g][a], groups[g][b], ev.date, { group: g }));
-      }
-    });
+  function clubsOf(s, leagueId) {
+    return Object.values(s.clubs).filter((c) => c.league === leagueId).map((c) => c.id);
   }
 
-  function table(game, teamIds, filterFn) {
+  function buildSeason(s, year) {
+    const start = firstSaturdayNear(year);
+    s.seasonStart = start;
+    s.breakDates = BREAKS.map((w) => U.addDays(start, w * 7));
+    const fixtures = {};
+    const calendar = [];
+    const leagueFx = {};
+    const mk = (comp, key, round, home, away, date, extra = {}) => {
+      const id = U.uid("f");
+      fixtures[id] = { id, comp, key, round, home, away, date, result: null, ...extra };
+      return id;
+    };
+    const ev = (comp, key, round, date, label, fx = []) => {
+      const e = { id: U.uid("c"), date, comp, key, round, label, fixtures: fx, done: false };
+      calendar.push(e);
+      return e;
+    };
+    const sat = (w) => U.addDays(start, w * 7);
+
+    // VĐQG
+    for (const lid of Object.keys(FC.LEAGUES)) {
+      const teams = clubsOf(s, lid);
+      if (teams.length < 2) continue;
+      const rr = roundRobin(teams);
+      const slots = [];
+      for (let w = 0; w < 40; w++) if (!BREAKS.includes(w)) slots.push(sat(w));
+      const extra = Math.max(0, rr.length - slots.length);
+      for (let i = 0; i < extra; i++) slots.push(U.addDays(sat(MIDWEEK[i]), 4));
+      slots.sort();
+      leagueFx[lid] = [];
+      rr.forEach((pairs, r) => {
+        const ids = pairs.map(([h, a]) => mk("league", lid, r + 1, h, a, slots[r]));
+        leagueFx[lid].push(...ids);
+        ev("league", lid, r + 1, slots[r], `Vòng ${r + 1}`, ids);
+      });
+      // Play-off lên hạng (hạng 3-6) / trận barrage
+      const L = FC.LEAGUES[lid];
+      if (L.playoff === "semis") {
+        ev("po", lid, "sf", U.addDays(sat(40), 4), "Bán kết play-off");
+        ev("po", lid, "f", sat(41), "Chung kết play-off");
+      }
+      if (L.barrage) ev("bar", lid, "f", U.addDays(sat(41), 1), "Play-off trụ hạng");
+    }
+
+    // Cúp quốc gia (gồm hạng 1 + hạng 2)
+    s.cups = {};
+    const countries = [...new Set(Object.values(FC.LEAGUES).map((l) => l.country))];
+    for (const c of countries) {
+      const teams = Object.values(s.clubs).filter((x) => x.country === c && FC.LEAGUES[x.league]).sort((a, b) => b.rep - a.rep).map((x) => x.id);
+      if (teams.length < 4) continue;
+      const size = nextPow2(teams.length);
+      const R = Math.log2(size);
+      const byes = size - teams.length;
+      const weeks = CUP_WEEKS.slice(-(R - 1));
+      const rounds = [];
+      for (let r = 0; r < R; r++) {
+        const left = size >> r;
+        const label = left === 2 ? "Chung kết" : left === 4 ? "Bán kết" : left === 8 ? "Tứ kết" : `Vòng 1/${left / 2}`;
+        const date = r === R - 1 ? sat(40) : U.addDays(sat(weeks[r]), 3);
+        rounds.push(ev("cup", c, r, date, label));
+      }
+      const playing = U.shuffle(teams.slice(byes));
+      for (let i = 0; i < playing.length; i += 2) rounds[0].fixtures.push(mk("cup", c, 0, playing[i], playing[i + 1], rounds[0].date, { ko: true }));
+      s.cups[c] = { byes: teams.slice(0, byes), alive: teams.slice(), winner: null, out: {}, rounds: R };
+    }
+
+    // Cúp châu lục
+    s.cont = {};
+    for (const [cid, C] of Object.entries(FC.CONTINENTAL)) {
+      let teams = [];
+      for (const [lid, n] of Object.entries(C.slots)) {
+        const q = s.qualified && s.qualified[lid];
+        const pool = q && q.length ? q.slice(0, n) : clubsOf(s, lid).sort((a, b) => s.clubs[b].rep - s.clubs[a].rep).slice(0, n);
+        teams.push(...pool);
+      }
+      teams = teams.filter((id) => s.clubs[id]);
+      const G = C.groups;
+      teams.sort((a, b) => s.clubs[b].rep - s.clubs[a].rep);
+      const groups = {};
+      const gk = "ABCDEFGH".slice(0, G).split("");
+      gk.forEach((g) => (groups[g] = []));
+      for (let pot = 0; pot < 4; pot++) {
+        const potTeams = U.shuffle(teams.slice(pot * G, pot * G + G));
+        potTeams.forEach((t, i) => groups[gk[i]].push(t));
+      }
+      s.cont[cid] = { groups, teams, winner: null, out: {} };
+      const pattern = [[[0, 1], [2, 3]], [[3, 0], [1, 2]], [[0, 2], [3, 1]]];
+      const md = [pattern[0], pattern[1], pattern[2], pattern[0].map(([a, b]) => [b, a]), pattern[1].map(([a, b]) => [b, a]), pattern[2].map(([a, b]) => [b, a])];
+      const off = cid === "ucl" ? 3 : 4;
+      md.forEach((pairs, mi) => {
+        const key = "g" + (mi + 1);
+        const date = U.addDays(sat(CONT_WEEKS[key]), off);
+        const ids = [];
+        for (const g of gk) for (const [a, b] of pairs) if (groups[g][a] && groups[g][b]) ids.push(mk(cid, cid, key, groups[g][a], groups[g][b], date, { group: g }));
+        ev(cid, cid, key, date, `Vòng bảng - Lượt ${mi + 1}`, ids);
+      });
+      const ko = G >= 8 ? ["r16", "qf", "sf", "f"] : ["qf", "sf", "f"];
+      const lbl = { r16: "Vòng 1/8", qf: "Tứ kết", sf: "Bán kết", f: "Chung kết" };
+      for (const k of ko) ev(cid, cid, k, k === "f" ? (cid === "ucl" ? sat(41) : U.addDays(sat(41), 1)) : U.addDays(sat(CONT_WEEKS[k]), off), lbl[k]);
+    }
+
+    calendar.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    s.fixtures = fixtures;
+    s.calendar = calendar;
+    s.calIdx = 0;
+    s.leagueFx = leagueFx;
+    s._ver = (s._ver || 0) + 1;
+  }
+
+  // ===== Bảng xếp hạng (có bộ nhớ đệm) =====
+  const cache = {};
+  function computeTable(s, teamIds, fxIds) {
     const rows = {};
     for (const id of teamIds) rows[id] = { id, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0, form: [] };
-    const fx = Object.values(game.fixtures).filter((f) => f.result && filterFn(f)).sort((a, b) => (a.date < b.date ? -1 : 1));
-    for (const f of fx) {
+    for (const fid of fxIds) {
+      const f = s.fixtures[fid];
+      if (!f || !f.result) continue;
       const h = rows[f.home], a = rows[f.away];
       if (!h || !a) continue;
       const { hg, ag } = f.result;
@@ -131,91 +197,130 @@
     }
     const list = Object.values(rows);
     list.forEach((r) => (r.form = r.form.slice(-5)));
-    list.sort((x, y) => y.pts - x.pts || y.gf - y.ga - (x.gf - x.ga) || y.gf - x.gf || game.clubs[x.id].name.localeCompare(game.clubs[y.id].name));
+    list.sort((x, y) => y.pts - x.pts || y.gf - y.ga - (x.gf - x.ga) || y.gf - x.gf || s.clubs[x.id].name.localeCompare(s.clubs[y.id].name));
     return list;
   }
-
-  function leagueTable(game) {
-    const ids = Object.values(game.clubs).filter((c) => c.league === "ENG").map((c) => c.id);
-    return table(game, ids, (f) => f.comp === "league");
+  function leagueTable(s, lid) {
+    const k = "L" + lid;
+    if (cache[k] && cache[k].v === s._ver && cache[k].s === s) return cache[k].t;
+    const t = computeTable(s, clubsOf(s, lid), s.leagueFx[lid] || []);
+    cache[k] = { v: s._ver, s, t };
+    return t;
   }
-  function groupTable(game, g) {
-    return table(game, game.ucl.groups[g], (f) => f.comp === "ucl" && f.group === g);
+  function groupTable(s, cid, g) {
+    const fx = s.calendar.filter((e) => e.comp === cid && e.round[0] === "g").flatMap((e) => e.fixtures).filter((id) => s.fixtures[id].group === g);
+    return computeTable(s, s.cont[cid].groups[g], fx);
+  }
+  function position(s, clubId) {
+    const c = s.clubs[clubId];
+    return leagueTable(s, c.league).findIndex((r) => r.id === clubId) + 1;
   }
 
-  // Bốc thăm vòng tiếp theo sau khi một vòng cúp kết thúc
-  function afterCupRound(game, ev) {
-    const winners = ev.fixtures.map((id) => {
-      const f = game.fixtures[id];
-      const w = f.result.winner === 0 ? f.home : f.away;
-      const l = f.result.winner === 0 ? f.away : f.home;
-      game.cup.eliminated[l] = ev.label;
-      return w;
-    });
-    const idx = CUP_ROUNDS.findIndex((r) => r.key === ev.round);
-    let alive = ev.round === "r1" ? game.cup.byes.concat(winners) : winners;
-    game.cup.alive = alive;
-    if (ev.round === "f") {
-      game.cup.winner = winners[0];
-      return { winner: winners[0] };
+  // ===== Xử lý sau mỗi vòng =====
+  function winnerOf(f) { return f.result.winner === 0 ? f.home : f.away; }
+  function loserOf(f) { return f.result.winner === 0 ? f.away : f.home; }
+  function addFx(s, e, home, away, extra) {
+    const id = U.uid("f");
+    s.fixtures[id] = { id, comp: e.comp, key: e.key, round: e.round, home, away, date: e.date, result: null, ko: true, ...extra };
+    e.fixtures.push(id);
+  }
+
+  function afterRound(s, e) {
+    const out = { winners: [], champion: null, comp: e.comp, key: e.key };
+    if (e.comp === "league") {
+      const last = !s.calendar.some((x) => x.comp === "league" && x.key === e.key && !x.done && x !== e);
+      if (last) {
+        out.leagueDone = true;
+        const L = FC.LEAGUES[e.key];
+        const t = leagueTable(s, e.key);
+        out.champion = t[0].id;
+        if (L.playoff === "semis") {
+          const sf = s.calendar.find((x) => x.comp === "po" && x.key === e.key && x.round === "sf");
+          addFx(s, sf, t[2].id, t[5].id, {});
+          addFx(s, sf, t[3].id, t[4].id, {});
+        }
+        if (L.barrage) {
+          // Trận barrage cần cả 2 giải đã kết thúc
+          tryBarrage(s, e.key);
+        }
+        if (L.up && FC.LEAGUES[L.up].barrage) tryBarrage(s, L.up);
+      }
+      return out;
     }
-    const next = CUP_ROUNDS[idx + 1];
-    const nev = game.calendar.find((c) => c.comp === "cup" && c.round === next.key);
-    const draw = U.shuffle(alive);
-    for (let i = 0; i < draw.length; i += 2) {
-      const id = U.uid("f");
-      game.fixtures[id] = { id, comp: "cup", round: next.key, home: draw[i], away: draw[i + 1], date: nev.date, result: null, ko: true, neutral: next.key === "f" || next.key === "sf" };
-      nev.fixtures.push(id);
+    if (e.comp === "po") {
+      if (e.round === "sf") {
+        const f = s.calendar.find((x) => x.comp === "po" && x.key === e.key && x.round === "f");
+        const w = e.fixtures.map((id) => winnerOf(s.fixtures[id]));
+        if (w.length === 2) addFx(s, f, w[0], w[1], { neutral: true });
+      } else if (e.fixtures.length) {
+        out.poWinner = winnerOf(s.fixtures[e.fixtures[0]]);
+      }
+      return out;
     }
-    return { drawn: next.label };
-  }
-
-  function afterUclRound(game, ev) {
-    if (ev.round.startsWith("g")) {
-      if (ev.round !== "g6") return null;
+    if (e.comp === "bar") {
+      if (e.fixtures.length) out.barWinner = winnerOf(s.fixtures[e.fixtures[0]]);
+      return out;
+    }
+    if (e.comp === "cup") {
+      const cup = s.cups[e.key];
+      const winners = e.fixtures.map((id) => { const f = s.fixtures[id]; cup.out[loserOf(f)] = e.label; return winnerOf(f); });
+      const alive = e.round === 0 ? cup.byes.concat(winners) : winners;
+      cup.alive = alive;
+      if (e.round === cup.rounds - 1) { cup.winner = winners[0]; out.champion = winners[0]; out.cupWinner = true; return out; }
+      const next = s.calendar.find((x) => x.comp === "cup" && x.key === e.key && x.round === e.round + 1);
+      const draw = U.shuffle(alive);
+      const neutral = next.round >= cup.rounds - 2;
+      for (let i = 0; i + 1 < draw.length; i += 2) addFx(s, next, draw[i], draw[i + 1], { neutral });
+      out.drawn = next;
+      return out;
+    }
+    // Cúp châu lục
+    const C = s.cont[e.key];
+    if (e.round[0] === "g") {
+      if (e.round !== "g6") return out;
       const q = {};
-      for (const g of Object.keys(game.ucl.groups)) {
-        const t = groupTable(game, g);
+      for (const g of Object.keys(C.groups)) {
+        const t = groupTable(s, e.key, g);
         q[g] = [t[0].id, t[1].id];
-        game.ucl.eliminated[t[2].id] = "Vòng bảng";
-        game.ucl.eliminated[t[3].id] = "Vòng bảng";
+        t.slice(2).forEach((r) => (C.out[r.id] = "Vòng bảng"));
       }
-      const pairs = [[q.A[0], q.B[1]], [q.B[0], q.A[1]], [q.C[0], q.D[1]], [q.D[0], q.C[1]]];
-      const nev = game.calendar.find((c) => c.comp === "ucl" && c.round === "qf");
-      for (const [h, a] of pairs) {
-        const id = U.uid("f");
-        game.fixtures[id] = { id, comp: "ucl", round: "qf", home: h, away: a, date: nev.date, result: null, ko: true };
-        nev.fixtures.push(id);
-      }
-      return { drawn: "Tứ kết" };
+      const gk = Object.keys(C.groups);
+      const pairs = [];
+      for (let i = 0; i < gk.length; i += 2) { pairs.push([q[gk[i]][0], q[gk[i + 1]][1]]); pairs.push([q[gk[i + 1]][0], q[gk[i]][1]]); }
+      const nk = gk.length >= 8 ? "r16" : "qf";
+      const next = s.calendar.find((x) => x.comp === e.key && x.round === nk);
+      for (const [h, a] of pairs) addFx(s, next, h, a, {});
+      out.drawn = next;
+      return out;
     }
-    const winners = ev.fixtures.map((id) => {
-      const f = game.fixtures[id];
-      const w = f.result.winner === 0 ? f.home : f.away;
-      game.ucl.eliminated[f.result.winner === 0 ? f.away : f.home] = ev.label;
-      return w;
-    });
-    if (ev.round === "f") {
-      game.ucl.winner = winners[0];
-      return { winner: winners[0] };
-    }
-    const nextKey = ev.round === "qf" ? "sf" : "f";
-    const nev = game.calendar.find((c) => c.comp === "ucl" && c.round === nextKey);
+    const winners = e.fixtures.map((id) => { const f = s.fixtures[id]; C.out[loserOf(f)] = e.label; return winnerOf(f); });
+    if (e.round === "f") { C.winner = winners[0]; out.champion = winners[0]; out.contWinner = true; return out; }
+    const nk = { r16: "qf", qf: "sf", sf: "f" }[e.round];
+    const next = s.calendar.find((x) => x.comp === e.key && x.round === nk);
     const draw = U.shuffle(winners);
-    for (let i = 0; i < draw.length; i += 2) {
-      const id = U.uid("f");
-      game.fixtures[id] = { id, comp: "ucl", round: nextKey, home: draw[i], away: draw[i + 1], date: nev.date, result: null, ko: true, neutral: nextKey === "f" };
-      nev.fixtures.push(id);
-    }
-    return { drawn: nextKey === "sf" ? "Bán kết" : "Chung kết" };
+    for (let i = 0; i + 1 < draw.length; i += 2) addFx(s, next, draw[i], draw[i + 1], { neutral: nk === "f" });
+    out.drawn = next;
+    return out;
   }
 
-  function roundLabel(f) {
+  function tryBarrage(s, tier1) {
+    const L = FC.LEAGUES[tier1];
+    const t2 = L.down;
+    const done1 = !s.calendar.some((x) => x.comp === "league" && x.key === tier1 && !x.done);
+    const done2 = !s.calendar.some((x) => x.comp === "league" && x.key === t2 && !x.done);
+    const bar = s.calendar.find((x) => x.comp === "bar" && x.key === tier1);
+    if (!bar || bar.fixtures.length || !done1 || !done2) return;
+    const a = leagueTable(s, tier1);
+    const b = leagueTable(s, t2);
+    addFx(s, bar, a[a.length - L.relegate - 1].id, b[2].id, {});
+  }
+
+  function roundLabel(s, f) {
     if (f.comp === "league") return "Vòng " + f.round;
-    if (f.comp === "cup") return (CUP_ROUNDS.find((r) => r.key === f.round) || {}).label || f.round;
-    if (f.round && f.round[0] === "g") return `Bảng ${f.group} - Lượt ${f.round.slice(1)}`;
-    return (UCL_KO.find((r) => r.key === f.round) || {}).label || f.round;
+    const e = s.calendar.find((x) => x.comp === f.comp && x.key === f.key && x.round === f.round);
+    if (f.group) return `Bảng ${f.group} - Lượt ${String(f.round).slice(1)}`;
+    return e ? e.label : String(f.round);
   }
 
-  FC.comp = { COMP, CUP_ROUNDS, buildSeason, leagueTable, groupTable, afterCupRound, afterUclRound, roundLabel, roundRobin };
+  FC.comp = { COMP, compName, compShort, compColor, cupName, buildSeason, leagueTable, groupTable, position, afterRound, roundLabel, roundRobin, clubsOf };
 })();

@@ -62,7 +62,10 @@
 
     buildSide(clubId, idx, opts) {
       const club = this.g.clubs[clubId];
-      const squad = club.players.map((id) => this.P[id]).filter(Boolean);
+      const squad = club.players.map((id) => this.P[id]).filter((p) => p && !p.res);
+      const mg = this.g.managers && club.mgr ? this.g.managers[club.mgr] : null;
+      const phil = FC.PHILOSOPHIES[(mg && mg.phil) || "pragmatic"];
+      const fam = mg ? (mg.fam != null ? mg.fam : 1) : 0.7;
       let t = club.tactics;
       let lineup, bench;
       const isUser = idx === this.userSide;
@@ -85,7 +88,10 @@
       for (const s of onPitch) { rating[s.pid] = 6.3; played[s.pid] = { start: 0, end: null, starter: true }; }
       return {
         idx, clubId, club, onPitch, bench: bench.slice(), subsUsed: 0, maxSubs: 5, fit, rating, played,
-        tactics: { mentality: t.mentality || 0, pressing: t.pressing != null ? t.pressing : 1, tempo: t.tempo != null ? t.tempo : 1, formation: t.formation },
+        phil, fam,
+        tactics: isUser
+          ? { mentality: t.mentality || 0, pressing: t.pressing != null ? t.pressing : 1, tempo: t.tempo != null ? t.tempo : 1, formation: t.formation }
+          : { mentality: 0, pressing: phil.press, tempo: phil.tempo, formation: t.formation },
         dayForm: U.clamp(1 + (Math.random() + Math.random() + Math.random() - 1.5) * 0.045, 0.94, 1.06), boost: 0, bonus: (isUser && opts.trainingBonus) || { att: 0, mid: 0, def: 0 }, sentOff: [], yellowed: {}, goals: [], injured: [],
       };
     }
@@ -106,9 +112,9 @@
       }
       let def = dw ? d / dw : 40, mid = mw ? m / mw : 40, att = aw ? a / aw : 40;
       const men = s.tactics.mentality;
-      att *= 1 + 0.035 * men + s.bonus.att;
-      def *= 1 - 0.028 * men + s.bonus.def;
-      mid *= 1 + (s.tactics.pressing - 1) * 0.02 + s.bonus.mid;
+      att *= 1 + 0.035 * men + s.bonus.att + s.phil.att * s.fam;
+      def *= 1 - 0.028 * men + s.bonus.def + s.phil.def * s.fam;
+      mid *= 1 + (s.tactics.pressing - 1) * 0.02 + s.bonus.mid + s.phil.mid * s.fam;
       const missing = 11 - s.onPitch.length;
       const f = (1 - missing * 0.075) * (1 + s.boost) * s.dayForm * (this.neutral ? 1 : i === 0 ? 1.02 : 1);
       const r = { def: def * f, mid: mid * f, att: att * f, gk: gk * (1 + s.boost) };
@@ -165,6 +171,7 @@
       let pH = 1 / (1 + Math.exp(-(A.mid - B.mid) / 17));
       pH += (this.sides[0].tactics.pressing - this.sides[1].tactics.pressing) * 0.02;
       pH += (this.momentum[0] - this.momentum[1]) * 0.03;
+      pH += (this.sides[0].phil.poss * this.sides[0].fam - this.sides[1].phil.poss * this.sides[1].fam) / 2;
       pH = U.clamp(pH, 0.22, 0.78);
       this.stats.poss[0] += pH;
       this.stats.poss[1] += 1 - pH;
@@ -187,7 +194,7 @@
       if (Math.random() < 0.0027) this.injury(Math.random() < 0.5 ? 0 : 1);
       // Thể lực
       for (const s of this.sides) {
-        const drain = 0.2 * (1 + (s.tactics.pressing - 1) * 0.18) * (1 + (s.tactics.tempo - 1) * 0.08);
+        const drain = 0.2 * (1 + (s.tactics.pressing - 1) * 0.18) * (1 + (s.tactics.tempo - 1) * 0.08) * (1 + (s.phil.fatigue || 0) * s.fam);
         for (const sl of s.onPitch) {
           const p = this.P[sl.pid];
           const ageF = p.age >= 32 ? 1.15 : p.age >= 29 ? 1.05 : p.age <= 20 ? 1.05 : 1;
@@ -228,8 +235,8 @@
       const r = Math.random();
       let kind = "normal", xg;
       if (r < 0.009) { kind = "pen"; xg = 0.78; }
-      else if (r < 0.12) { kind = "big"; xg = U.rand(0.25, 0.5); }
-      else xg = U.rand(0.02, 0.132);
+      else if (r < 0.12 + (s.phil.bigChance || 0) * s.fam) { kind = "big"; xg = U.rand(0.25, 0.5); }
+      else xg = U.rand(0.02, 0.122);
       if (kind !== "pen") xg = U.clamp(xg * Math.pow(ratio, 1.15), 0.01, 0.85);
       const shooter = this.pickShooter(s);
       if (!shooter) return;

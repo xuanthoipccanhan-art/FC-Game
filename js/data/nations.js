@@ -12,6 +12,11 @@
     SVN: ["Slovenia", "SI"], BIH: ["Bosnia", "BA"], ROU: ["Romania", "RO"], BUL: ["Bulgaria", "BG"], GRE: ["Hy Lạp", "GR"], ALB: ["Albania", "AL"],
     KOS: ["Kosovo", "XK"], TUR: ["Thổ Nhĩ Kỳ", "TR"], GEO: ["Georgia", "GE"], ARM: ["Armenia", "AM"], UKR: ["Ukraine", "UA"],
     RUS: ["Nga", "RU"], UZB: ["Uzbekistan", "UZ"], JPN: ["Nhật Bản", "JP"], KOR: ["Hàn Quốc", "KR"], VIE: ["Việt Nam", "VN"],
+    CHI: ["Chile", "CL"], PER: ["Peru", "PE"], VEN: ["Venezuela", "VE"], PAN: ["Panama", "PA"], DOM: ["CH Dominica", "DO"],
+    ZAM: ["Zambia", "ZM"], MNE: ["Montenegro", "ME"], TOG: ["Togo", "TG"], AUS: ["Úc", "AU"], MKD: ["Bắc Macedonia", "MK"],
+    EQG: ["Guinea Xích Đạo", "GQ"], LTU: ["Litva", "LT"], ANG: ["Angola", "AO"], IDN: ["Indonesia", "ID"], SUR: ["Suriname", "SR"],
+    FIN: ["Phần Lan", "FI"], CAF: ["Trung Phi", "CF"], GAB: ["Gabon", "GA"], GUF: ["Guyane (Pháp)", "GF"], LUX: ["Luxembourg", "LU"],
+    KSA: ["Ả Rập Xê Út", "SA"],
     EGY: ["Ai Cập", "EG"], MAR: ["Ma-rốc", "MA"], ALG: ["Algeria", "DZ"], TUN: ["Tunisia", "TN"], SEN: ["Senegal", "SN"],
     CIV: ["Bờ Biển Ngà", "CI"], GHA: ["Ghana", "GH"], NGA: ["Nigeria", "NG"], CMR: ["Cameroon", "CM"], MLI: ["Mali", "ML"],
     BFA: ["Burkina Faso", "BF"], GUI: ["Guinea", "GN"], GNB: ["Guinea-Bissau", "GW"], GAM: ["Gambia", "GM"],
@@ -63,7 +68,21 @@
       f: ["Daan", "Sem", "Milan", "Luuk", "Thijs", "Bram", "Jesse", "Ruben", "Noah", "Xavi"],
       l: ["de Jong", "Jansen", "de Vries", "van den Berg", "Bakker", "Visser", "Smit", "Meijer", "Mulder", "de Boer"],
     },
+    ARG: {
+      f: ["Santiago", "Mateo", "Thiago", "Valentín", "Franco", "Agustín", "Lautaro", "Joaquín", "Tomás", "Facundo", "Benjamín", "Nicolás", "Gonzalo"],
+      l: ["González", "Rodríguez", "Fernández", "López", "Martínez", "Pérez", "Romero", "Sosa", "Acosta", "Medina", "Benítez", "Herrera", "Aguirre"],
+    },
+    USA: {
+      f: ["Liam", "Noah", "Caleb", "Owen", "Mason", "Gavin", "Brandon", "Diego", "Logan", "Cole", "Jaden", "Tyler"],
+      l: ["Johnson", "Williams", "Miller", "Davis", "Anderson", "Thomas", "Jackson", "White", "Moore", "Reyna", "Adams", "Hernandez"],
+    },
+    KSA: {
+      f: ["Mohammed", "Abdullah", "Fahad", "Saud", "Faisal", "Nawaf", "Turki", "Khalid", "Sultan", "Abdulrahman", "Hamad", "Yasser"],
+      l: ["Al-Shehri", "Al-Dosari", "Al-Ghamdi", "Al-Harbi", "Al-Qahtani", "Al-Otaibi", "Al-Zahrani", "Al-Malki", "Al-Mutairi", "Al-Anazi", "Al-Shahrani"],
+    },
   };
+  // Quốc tịch dùng khi sinh cầu thủ cho từng quốc gia giải đấu
+  FC.NAME_POOL = { ENG: "ENG", ESP: "ESP", ITA: "ITA", GER: "GER", FRA: "FRA", POR: "POR", NED: "NED", KSA: "KSA", USA: "USA", ARG: "ARG", BRA: "BRA" };
 
   FC.NATIONS = N;
   FC.NAMES = NAMES;

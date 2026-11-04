@@ -7,7 +7,7 @@
   } catch (e) { /* bỏ qua */ }
   FC.App.render();
   // Tự động dò logo thật trong thư mục logos/
-  const clubs = FC.DATA.ENG.concat(FC.DATA.EUR);
+  const clubs = FC.WORLD.clubs;
   FC.probeLogos(clubs, (found) => {
     if (found) FC.App.render();
   });

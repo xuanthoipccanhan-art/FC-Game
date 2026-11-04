@@ -12,8 +12,8 @@
   function playerTable(list, opts = {}) {
     if (!list.length) return `<div class="empty">${opts.empty || "Không có cầu thủ phù hợp."}</div>`;
     return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>VT</th><th>Cầu thủ</th><th class="num">Tuổi</th><th class="num">OVR</th><th class="num">TN*</th><th>CLB</th><th class="num">Giá trị</th><th class="num">Lương</th><th class="num">HĐ</th><th></th></tr></thead><tbody>
-      ${list.map((p) => `<tr class="click" data-act="player" data-id="${p.id}"><td>${h.pos(p.pos)}</td><td>${h.flag(p.nat)} <b>${esc(p.name)}</b></td><td class="num">${p.age}</td><td class="num">${h.ovr(p.ovr)}</td>
-        <td class="num muted">~${Math.round(p.pot / 3) * 3}</td><td>${p.clubId ? h.clubStatic(G.s.clubs[p.clubId], 18, true) : '<span class="tag green">Tự do</span>'}</td>
+      ${list.map((p) => `<tr class="click" data-act="player" data-id="${p.id}"><td>${h.pos(p.pos)}</td><td>${h.flag(p.nat)} <b>${esc(p.name)}</b>${p.gen ? ' <span class="tiny muted">ⓖ</span>' : ""}</td><td class="num">${p.age}</td><td class="num">${h.ovr(p.ovr)}</td>
+        <td class="num muted">${h.pot(p)}</td><td>${p.clubId ? h.clubStatic(G.s.clubs[p.clubId], 18, true) : '<span class="tag green">Tự do</span>'}</td>
         <td class="num">${U.money(p.value)}</td><td class="num small">${U.wage(p.wage)}</td><td class="num">${p.clubId ? p.contract + "n" : "—"}</td><td>${h.status(p)}${G.s.shortlist.includes(p.id) ? " ★" : ""}</td></tr>`).join("")}
     </tbody></table></div>${opts.note ? `<div class="tiny muted" style="margin-top:6px">${opts.note}</div>` : ""}`;
   }
@@ -26,16 +26,17 @@
       <div class="card"><div class="small muted">Kỳ chuyển nhượng</div><div class="b" style="color:${open ? "var(--accent)" : "var(--red)"}">${open ? "ĐANG MỞ" : "ĐÃ ĐÓNG"}</div><div class="tiny muted">Hè: 15/06–01/09 · Đông: 01/01–02/02</div></div>
       <div class="card"><div class="small muted">Ngân sách chuyển nhượng</div><div class="stat-big">${U.money(u.transferBudget)}</div></div>
       <div class="card"><div class="small muted">Quỹ lương còn trống</div><div class="stat-big" style="font-size:20px">${U.wage(Math.max(0, u.wageBudget - G.wageBill(u.id)))}</div></div>
-      <div class="card"><div class="small muted">Số cầu thủ</div><div class="stat-big">${u.players.length}<span class="small muted">/32</span></div></div></div>`;
+      <div class="card"><div class="small muted">Số cầu thủ</div><div class="stat-big">${u.players.length}<span class="small muted">/35</span></div></div></div>`;
     const tabsHtml = `<div class="tabs">${[["search", "🔎 Tìm kiếm"], ["shortlist", `★ Theo dõi (${s.shortlist.length})`], ["free", "🆓 Cầu thủ tự do"], ["selling", `🏷️ Rao bán & đề nghị (${s.pendingOffers.length})`], ["log", "📰 Tin chuyển nhượng"]]
       .map(([k, l]) => `<button class="tab ${tab === k ? "on" : ""}" data-act="tab" data-id="${k}">${l}</button>`).join("")}</div>`;
     let body = "";
     if (tab === "search") {
       const f = App.st.tsearch || (App.st.tsearch = { q: "", pos: "", maxAge: 40, maxPrice: 0, minOvr: 70, league: "", sort: "ovr" });
-      let list = Object.values(s.players).filter((p) => p.clubId && p.clubId !== u.id && !p.academy);
+      let list = Object.values(s.players).filter((p) => p.clubId && p.clubId !== u.id && !p.academy && !p.res);
       if (f.q) { const q = f.q.toLowerCase(); list = list.filter((p) => p.name.toLowerCase().includes(q) || s.clubs[p.clubId].name.toLowerCase().includes(q)); }
       if (f.pos) list = list.filter((p) => (f.pos.length > 3 ? PL.GROUP[p.pos] === f.pos.slice(1) : p.pos === f.pos));
       if (f.league) list = list.filter((p) => s.clubs[p.clubId].league === f.league);
+      if (f.real) list = list.filter((p) => !p.gen);
       list = list.filter((p) => p.age <= f.maxAge && p.ovr >= f.minOvr && (!f.maxPrice || p.value <= f.maxPrice));
       const sorters = { ovr: (a, b) => b.ovr - a.ovr, value: (a, b) => a.value - b.value, age: (a, b) => a.age - b.age, pot: (a, b) => b.pot - a.pot };
       list.sort(sorters[f.sort]);
@@ -44,12 +45,13 @@
       body = `<div class="card"><div class="row wrap" style="margin-bottom:12px">
         <input type="text" placeholder="Tên cầu thủ / CLB" value="${esc(f.q)}" data-change="tsf" data-id="q" style="flex:1;min-width:160px">
         <select data-change="tsf" data-id="pos"><option value="">Mọi vị trí</option>${["_GK", "_DEF", "_MID", "_ATT"].map((g) => `<option value="${g}" ${f.pos === g ? "selected" : ""}>Nhóm ${{ _GK: "Thủ môn", _DEF: "Hậu vệ", _MID: "Tiền vệ", _ATT: "Tiền đạo" }[g]}</option>`).join("")}${PL.POS.map((p) => `<option ${f.pos === p ? "selected" : ""}>${p}</option>`).join("")}</select>
-        <select data-change="tsf" data-id="league"><option value="">Mọi giải</option><option value="ENG" ${f.league === "ENG" ? "selected" : ""}>Ngoại hạng Anh</option><option value="EUR" ${f.league === "EUR" ? "selected" : ""}>CLB châu Âu</option></select>
+        <select data-change="tsf" data-id="league"><option value="">Mọi giải</option>${FC.COUNTRY_ORDER.map((ct) => Object.entries(FC.LEAGUES).filter(([, L]) => L.country === ct).map(([lid, L]) => `<option value="${lid}" ${f.league === lid ? "selected" : ""}>${FC.flag(ct)} ${esc(L.name)}</option>`).join("")).join("")}</select>
+        <label class="small muted"><input type="checkbox" ${f.real ? "checked" : ""} data-change="tsfReal"> Chỉ cầu thủ thật</label>
         <label class="small muted">OVR ≥ <input type="number" min="40" max="99" value="${f.minOvr}" data-change="tsf" data-id="minOvr" style="width:64px"></label>
         <label class="small muted">Tuổi ≤ <input type="number" min="16" max="40" value="${f.maxAge}" data-change="tsf" data-id="maxAge" style="width:64px"></label>
         <label class="small muted">Giá ≤ <input type="number" min="0" step="5" value="${f.maxPrice || ""}" placeholder="tr €" data-change="tsf" data-id="maxPrice" style="width:80px"></label>
         <select data-change="tsf" data-id="sort">${[["ovr", "Sắp: OVR"], ["pot", "Sắp: Tiềm năng"], ["value", "Sắp: Giá rẻ"], ["age", "Sắp: Trẻ nhất"]].map(([k, l]) => `<option value="${k}" ${f.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      </div>${playerTable(list, { note: `Hiển thị ${list.length}/${total} kết quả. *TN = tiềm năng do tuyển trạch viên ước lượng.` })}</div>`;
+      </div>${playerTable(list, { note: `Hiển thị ${list.length}/${total} kết quả. *TN = tiềm năng do tuyển trạch viên ước lượng (càng giỏi càng chính xác). ⓖ = cầu thủ do game tạo.` })}</div>`;
     } else if (tab === "shortlist") {
       body = `<div class="card">${playerTable(s.shortlist.map((id) => s.players[id]).filter(Boolean), { empty: "Chưa theo dõi cầu thủ nào. Mở hồ sơ cầu thủ và bấm ☆ Theo dõi." })}</div>`;
     } else if (tab === "free") {
@@ -66,7 +68,7 @@
     } else {
       body = `<div class="card"><table class="tbl"><thead><tr><th>Ngày</th><th>Cầu thủ</th><th>Từ</th><th>Đến</th><th class="num">Phí</th></tr></thead><tbody>${s.transferLog.slice(0, 80).map((t) => {
         const p = s.players[t.pid];
-        return `<tr class="${p ? "click" : ""}" ${p ? `data-act="player" data-id="${t.pid}"` : ""}><td class="small">${U.fmtDate(t.date, false)}</td><td><b>${esc(t.name)}</b></td><td>${t.from ? h.clubStatic(s.clubs[t.from], 18, true) : '<span class="tag green">Tự do</span>'}</td><td>${h.clubStatic(s.clubs[t.to], 18, true)}</td><td class="num b">${t.fee ? U.money(t.fee) : "Miễn phí"}</td></tr>`;
+        return `<tr class="${p ? "click" : ""}" ${p ? `data-act="player" data-id="${t.pid}"` : ""}><td class="small">${U.fmtDate(t.date, false)}</td><td><b>${esc(t.name)}</b></td><td>${t.from ? h.clubStatic(s.clubs[t.from], 18, true) : '<span class="tag green">Tự do</span>'}</td><td>${h.clubStatic(s.clubs[t.to], 18, true)}</td><td class="num b">${t.loan ? '<span class="tag blue">Cho mượn</span>' : t.fee ? U.money(t.fee) : "Miễn phí"}</td></tr>`;
       }).join("") || '<tr><td colspan="5" class="empty">Chưa có giao dịch nào.</td></tr>'}</tbody></table></div>`;
     }
     return `<h2 class="title">Chuyển nhượng</h2>${head}${tabsHtml}${body}`;
@@ -78,6 +80,49 @@
     f[d.id] = v;
     if (d.id === "maxAge" && !v) f.maxAge = 40;
     this.render();
+  });
+
+  App.on("tsfReal", function (d, el) { App.st.tsearch.real = el.checked; this.render(); });
+
+  // ===== Cho mượn / hỏi mượn =====
+  App.on("loanOut", function (d) {
+    const s = G.s;
+    const p = s.players[d.id];
+    if (!TR.isWindowOpen(s.date)) return this.toast("Chỉ cho mượn được trong kỳ chuyển nhượng.", true);
+    if (G.squad(s.userClub).length <= 16 && !p.res) return this.toast("Đội một quá mỏng để cho mượn thêm.", true);
+    const opts = TR.loanOptions(s, d.id);
+    this.closeAllModals();
+    const m = this.modal(`Cho mượn: ${esc(p.name)}`, opts.length ? `<p class="small muted">Các CLB quan tâm mượn ${esc(p.name)} đến hết mùa:</p>${opts.map((o, i) => `<div class="list-item">${FC.crest(s.clubs[o.clubId], 30)}<div class="grow"><b>${esc(s.clubs[o.clubId].name)}</b> ${h.league(s.clubs[o.clubId].league)}<div class="tiny muted">Trả ${o.wagePct}% lương · Vai trò: ${o.minutes}${o.buyFee ? ` · Điều khoản mua đứt ${U.money(o.buyFee)}` : ""}</div></div><button class="btn sm primary" data-loanopt="${i}">Đồng ý</button></div>`).join("")}` : '<div class="empty">Hiện chưa có CLB nào muốn mượn cầu thủ này.</div>', { size: "narrow" });
+    m.querySelectorAll("[data-loanopt]").forEach((b) => (b.onclick = () => {
+      G.loanOut(p.id, opts[+b.dataset.loanopt]);
+      this.closeModal(m);
+      this.toast(`${esc(p.name)} được cho mượn tới ${esc(s.clubs[opts[+b.dataset.loanopt].clubId].name)}.`);
+      G.save(this.slot);
+      this.render();
+    }));
+  });
+  App.on("loanIn", function (d) {
+    const s = G.s;
+    const p = s.players[d.id];
+    this.closeAllModals();
+    const m = this.modal(`Hỏi mượn: ${esc(p.name)}`, `<div class="kv small"><span class="k">CLB chủ quản</span><span class="v">${esc(s.clubs[p.clubId].name)}</span><span class="k">Lương cầu thủ</span><span class="v">${U.wage(p.wage)}</span><span class="k">Quỹ lương còn trống</span><span class="v">${U.wage(Math.max(0, G.user.wageBudget - G.wageBill(G.s.userClub)))}</span></div>
+      <div class="row wrap" style="margin-top:12px"><label>Bạn trả <select id="ln-pct">${[25, 50, 75, 100].map((x) => `<option ${x === 75 ? "selected" : ""}>${x}</option>`).join("")}</select> % lương</label>
+      <label class="small"><input type="checkbox" id="ln-buy"> Kèm điều khoản mua đứt (~${U.money(Math.round(p.value * 1.35 * 10) / 10)})</label></div><div id="ln-msg" class="small" style="margin-top:10px"></div>`,
+      { size: "narrow", footer: `<button class="btn" data-close>Đóng</button><button class="btn primary" id="ln-go">Gửi đề nghị mượn</button>` });
+    m.querySelector("#ln-go").onclick = () => {
+      const pct = +m.querySelector("#ln-pct").value;
+      if (G.wageBill(s.userClub) + (p.wage * pct) / 100 > G.user.wageBudget) { m.querySelector("#ln-msg").innerHTML = '<span style="color:var(--red)">Vượt quỹ lương.</span>'; return; }
+      const r = TR.loanBid(s, p.id, pct, m.querySelector("#ln-buy").checked);
+      m.querySelector("#ln-msg").innerHTML = `<span style="color:${r.ok ? "var(--accent)" : "var(--red)"}">${esc(r.msg)}</span>`;
+      if (r.ok) { G.mail("Giám đốc thể thao", `Mượn thành công ${p.name}`, r.msg, "transfer"); FC.events.news(G, "transfer", `🔁 ${p.name} gia nhập ${G.user.name} theo dạng cho mượn.`, { pid: p.id }); G.save(this.slot); setTimeout(() => { this.closeModal(m); this.render(); }, 900); }
+    };
+  });
+  App.on("toggleBuyLoan", function (d) {
+    const s = G.s;
+    s.buyLoan = s.buyLoan || {};
+    s.buyLoan[d.id] = !s.buyLoan[d.id];
+    this.closeAllModals();
+    this.playerModal(d.id);
   });
 
   App.on("shortlist", function (d) {
@@ -134,7 +179,8 @@
     const st = { fee: free ? 0 : null, step: free ? "contract" : "fee" };
     const u = G.user;
     const est = TR.askingPrice(s, p);
-    const scoutLo = Math.round(est * 0.9 * 10) / 10, scoutHi = Math.round(est * 1.15 * 10) / 10;
+    const acc = Math.max(0.03, 0.3 - G.staffRating("scout") * 0.014);
+    const scoutLo = Math.round(est * (1 - acc) * 10) / 10, scoutHi = Math.round(est * (1 + acc) * 10) / 10;
     this.closeAllModals();
     const m = this.modal(`${free ? "Ký hợp đồng" : "Hỏi mua"}: ${esc(p.name)}`, `<div id="ng"></div>`, { size: "narrow" });
     const box = m.querySelector("#ng");
@@ -142,7 +188,7 @@
       const msgHtml = msg ? `<div class="small" style="margin:10px 0;color:${ok ? "var(--accent)" : ok === false ? "var(--red)" : "var(--gold)"}">${msg}</div>` : "";
       if (st.step === "fee") {
         box.innerHTML = `<div class="row" style="margin-bottom:12px">${FC.crest(s.clubs[p.clubId], 36)}<div><b>${esc(p.name)}</b> · ${p.pos} · ${p.ovr}<div class="tiny muted">${esc(s.clubs[p.clubId].name)} · HĐ còn ${p.contract} năm</div></div></div>
-          <div class="kv small"><span class="k">Giá trị thị trường</span><span class="v">${U.money(p.value)}</span><span class="k">Tuyển trạch viên ước tính</span><span class="v">${U.money(scoutLo)} – ${U.money(scoutHi)}</span><span class="k">Ngân sách của bạn</span><span class="v">${U.money(u.transferBudget)}</span></div>
+          <div class="kv small"><span class="k">Giá trị thị trường</span><span class="v">${U.money(p.value)}</span><span class="k">Tuyển trạch viên ước tính</span><span class="v">${U.money(scoutLo)} – ${U.money(scoutHi)}</span><span class="k">Ngân sách của bạn</span><span class="v">${U.money(u.transferBudget)}</span>${p.clause ? `<span class="k">Điều khoản giải phóng</span><span class="v" style="color:var(--gold)">${U.money(p.clause)}</span>` : ""}</div>
           <div class="row" style="margin-top:12px"><label class="grow">Mức phí đề nghị (triệu €)<input type="number" id="ng-fee" step="0.5" min="0" value="${st.counter || Math.round(p.value * 10) / 10}" style="width:100%"></label></div>
           ${msgHtml}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close>Huỷ</button>${st.counter ? `<button class="btn gold" id="ng-acc">Chấp nhận ${U.money(st.counter)}</button>` : ""}<button class="btn primary" id="ng-go">Gửi đề nghị</button></div>`;
         box.querySelector("#ng-go").onclick = () => submitFee(+box.querySelector("#ng-fee").value);
