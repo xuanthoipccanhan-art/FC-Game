@@ -229,7 +229,7 @@
       let kind = "normal", xg;
       if (r < 0.009) { kind = "pen"; xg = 0.78; }
       else if (r < 0.12) { kind = "big"; xg = U.rand(0.25, 0.5); }
-      else xg = U.rand(0.02, 0.125);
+      else xg = U.rand(0.02, 0.132);
       if (kind !== "pen") xg = U.clamp(xg * Math.pow(ratio, 1.15), 0.01, 0.85);
       const shooter = this.pickShooter(s);
       if (!shooter) return;

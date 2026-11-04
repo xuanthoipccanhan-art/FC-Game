@@ -104,7 +104,7 @@
         const need = TR.clubNeeds(this.s, club);
         const grp = need[0] || U.pick(["DEF", "MID", "ATT"]);
         const posMap = { GK: ["GK"], DEF: ["CB", "LB", "RB", "CB"], MID: ["CM", "CDM", "CAM", "LM", "RM"], ATT: ["ST", "LW", "RW"] };
-        const p = this.genPlayer(club, U.pick(posMap[grp]), U.randInt(18, 23), Math.round(club.rep - 14 + U.rand(-4, 3)));
+        const p = this.genPlayer(club, U.pick(posMap[grp]), U.randInt(18, 23), Math.round(club.rep - 17 + U.rand(-4, 3)));
         club.players.push(p.id);
       }
     },
@@ -587,8 +587,13 @@
     jobOffers() {
       const s = this.s;
       const cur = this.user;
-      const cands = Object.values(s.clubs).filter((c) => c.league === "ENG" && c.id !== cur.id && c.rep <= cur.rep + 1).sort((a, b) => b.rep - a.rep);
-      return U.shuffle(cands.slice(Math.max(0, Math.floor(cands.length / 3) - 2))).slice(0, 3);
+      const others = Object.values(s.clubs).filter((c) => c.league === "ENG" && c.id !== cur.id);
+      let cands = others.filter((c) => c.rep <= cur.rep + 1).sort((a, b) => b.rep - a.rep);
+      cands = cands.slice(Math.max(0, Math.floor(cands.length / 3) - 2));
+      // Luôn có ít nhất 3 lời mời: bổ sung các CLB uy tín thấp nhất
+      const low = others.slice().sort((a, b) => a.rep - b.rep);
+      for (const c of low) { if (cands.length >= 3) break; if (!cands.includes(c)) cands.push(c); }
+      return U.shuffle(cands).slice(0, 3);
     },
 
     takeJob(clubId) {
@@ -618,17 +623,17 @@
         const fac = club ? 0.88 + 0.05 * club.facilities.training : 1;
         let rate;
         const a = p.age;
-        if (a <= 19) rate = 0.24;
-        else if (a <= 21) rate = 0.2;
-        else if (a <= 23) rate = 0.13;
-        else if (a <= 26) rate = 0.06;
+        if (a <= 19) rate = 0.13;
+        else if (a <= 21) rate = 0.11;
+        else if (a <= 23) rate = 0.075;
+        else if (a <= 26) rate = 0.035;
         else if (a <= 29) rate = 0.0;
         else if (a <= 31) rate = -0.035;
         else if (a <= 33) rate = -0.07;
         else rate = -0.11;
         if (rate > 0) {
           if (p.ovr >= p.pot) rate = 0;
-          else rate *= Math.min(1.4, 0.5 + (p.pot - p.ovr) / 10);
+          else rate *= Math.min(1.3, 0.4 + (p.pot - p.ovr) / 12);
           const playF = p.stats.apps > 0 ? Math.min(1.25, 0.8 + p.stats.mins / Math.max(1, p.stats.apps * 90) * 0.45) : 0.75;
           rate *= playF;
           if (isUser) {
@@ -660,7 +665,7 @@
       for (let i = 0; i < n; i++) {
         const lvl = u.facilities.youth;
         const ovr = U.randInt(44, 54 + lvl * 2);
-        const star = U.chance(0.04 + lvl * 0.03);
+        const star = U.chance(0.02 + lvl * 0.015);
         const pot = U.clamp(Math.round(U.rand(62, 76 + lvl * 2.5) + (star ? U.rand(8, 14) : 0)), ovr + 8, 94);
         const p = this.genPlayer(u, U.pick(posList), U.randInt(15, 17), ovr, pot);
         p.academy = true;
@@ -839,7 +844,7 @@
         if (p.academy) { p.age++; continue; }
         p.age++;
         // Tiềm năng biến động nhẹ
-        if (p.age <= 23) p.pot = U.clamp(p.pot + U.randInt(-2, 2), p.ovr, 95);
+        if (p.age <= 23) p.pot = U.clamp(p.pot + U.randInt(-2, 1), p.ovr, 95);
         if (p.age >= 30) p.pot = p.ovr;
         p.career.seasons = (p.career.seasons || 0) + 1;
         p.stats = PL.newStats();
@@ -907,6 +912,11 @@
       CP.buildSeason(s, s.season);
       this.resetFinance();
       this.setBoardTargets(false);
+      if (u.players.length < 16) {
+        const before = u.players.length;
+        this.fillSquad(u, 16);
+        this.mail("Giám đốc thể thao", "Bổ sung nhân sự khẩn cấp", `Đội hình chỉ còn ${before} cầu thủ nên CLB đã đôn ${u.players.length - before} cầu thủ trẻ lên đội một. Hãy tăng cường lực lượng trên thị trường chuyển nhượng!`, "transfer");
+      }
       this.autoPickIfBroken(u);
       this.mail("Ban lãnh đạo", `Mùa giải ${this.seasonLabel()} bắt đầu`,
         `Mục tiêu mùa mới: <b>${s.board.targetText}</b>.\nNgân sách chuyển nhượng: <b>${U.money(u.transferBudget)}</b>.\nQuỹ lương: <b>${U.wage(u.wageBudget)}</b>.\nĐộ tín nhiệm hiện tại: ${Math.round(s.board.confidence)}%.`, "board");

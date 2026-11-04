@@ -162,37 +162,24 @@
     return p.ovr * fam * fitF * morF * formF;
   }
 
-  // Tự chọn đội hình tốt nhất cho một sơ đồ
+  // Tự chọn đội hình tốt nhất cho một sơ đồ (phân bổ tham lam toàn cục theo giá trị hiệu quả)
   function autoLineup(players, formation, opts = {}) {
     const slots = FORMATIONS[formation];
     const pool = players.filter((p) => available(p) && !(opts.exclude && opts.exclude.has(p.id)));
     const lineup = new Array(slots.length).fill(null);
     const used = new Set();
-    // Thứ tự lấp ô: GK, rồi theo độ khan hiếm
-    const order = slots.map((s, i) => i).sort((a, b) => {
-      const pa = slots[a][0] === "GK" ? -1 : 0, pb = slots[b][0] === "GK" ? -1 : 0;
-      return pa - pb;
-    });
-    // Ưu tiên vị trí sở trường trước
-    for (const pass of [1, 0]) {
-      for (const i of order) {
-        if (lineup[i]) continue;
-        const sp = slots[i][0];
-        let best = null, bestV = -1;
-        for (const p of pool) {
-          if (used.has(p.id)) continue;
-          if (pass === 1 && p.pos !== sp && familiarity(p.pos, sp) < 0.93) continue;
-          const rest = opts.rotate && p.fitness < 82 ? 0.88 : 1;
-          const v = effective(p, sp) * rest;
-          if (v > bestV) { bestV = v; best = p; }
-        }
-        if (best && (pass === 0 || bestV > 0)) {
-          // Ở lượt 1, chỉ nhận nếu khá phù hợp
-          if (pass === 1 && bestV < best.ovr * 0.75) continue;
-          lineup[i] = best.id;
-          used.add(best.id);
-        }
+    const pairs = [];
+    slots.forEach((sl, i) => {
+      for (const p of pool) {
+        const rest = opts.rotate && p.fitness < 82 ? 0.88 : 1;
+        pairs.push([effective(p, sl[0]) * rest, i, p]);
       }
+    });
+    pairs.sort((a, b) => b[0] - a[0]);
+    for (const [, i, p] of pairs) {
+      if (lineup[i] || used.has(p.id)) continue;
+      lineup[i] = p.id;
+      used.add(p.id);
     }
     const bench = pool
       .filter((p) => !used.has(p.id))

@@ -57,7 +57,7 @@
 
   // Dò logo thật trong thư mục logos/
   function probeLogos(clubs, done) {
-    const exts = ["png", "svg", "webp", "jpg"];
+    const exts = ["png", "svg"];
     let pending = 0;
     let found = 0;
     for (const c of clubs) {
